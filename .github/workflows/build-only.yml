@@ -2,11 +2,11 @@ name: "Build only"
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master development]
     tags:
       - v*
   pull_request:
-    branches: [ master ]
+    branches: [ master development]
 
 
 env:
