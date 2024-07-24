@@ -176,15 +176,12 @@ jobs:
         sed -i "s/versionCode .*/versionCode ${{needs.get-versionCode.outputs.versionCode}}/" \
                 mobile/build.gradle
 
-    - uses: adnsio/setup-age-action@v1.2.0
     - name: Load Android secrets
-      if: env.KEY_ANDROID_JKS != null
+      if: env.KEY_ANDROID_JKS_64 != null
       env:
-        KEY_ANDROID_JKS: ${{ secrets.KEY_ANDROID_JKS }}
+        KEY_ANDROID_JKS_64: ${{ secrets.KEY_ANDROID_JKS_64 }}
       run: |
-        printf "$KEY_ANDROID_JKS" > android.jks.key
-        cat android.jks.age | age -d -i android.jks.key -o android.jks
-        rm android.jks.key
+        printf "$KEY_ANDROID_JKS_64" > base64 --decode > android.jks
 
     - name: Assemble
       env:
