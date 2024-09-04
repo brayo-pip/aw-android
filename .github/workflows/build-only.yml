@@ -55,7 +55,7 @@ jobs:
     # Rust
     - name: Set up Rust
       id: toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@1.79.0
       if: steps.cache-jniLibs.outputs.cache-hit != 'true'
 
     - name: Set up Rust toolchain for Android NDK
