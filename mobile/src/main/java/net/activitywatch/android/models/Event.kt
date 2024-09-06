@@ -10,8 +10,8 @@ import org.threeten.bp.Instant
 
 data class Event(val timestamp: Instant, val duration: Double = 0.0, val data: JSONObject) {
     companion object {
-        fun fromUsageEvent(usageEvent: UsageEvents.Event, context: Context, includeClassname: Boolean = true): Event {
-            val timestamp = DateTimeUtils.toInstant(java.util.Date(usageEvent.timeStamp))
+        fun fromUsageEvent(usageEvent: UsageEvents.Event, context: Context, includeClassname: Boolean = true, useCurrentTimestamp: Boolean = false): Event {
+
             val pm = context.packageManager
             val appName = try {
                 pm.getApplicationLabel(pm.getApplicationInfo(usageEvent.packageName, PackageManager.GET_META_DATA or PackageManager.MATCH_UNINSTALLED_PACKAGES))
@@ -28,7 +28,7 @@ data class Event(val timestamp: Instant, val duration: Double = 0.0, val data: J
             }
 
             return Event(
-                timestamp = timestamp,
+                timestamp = if( useCurrentTimestamp ) Instant.now() else DateTimeUtils.toInstant(java.util.Date(usageEvent.timeStamp)),
                 duration = 0.0,
                 data = data
             )
