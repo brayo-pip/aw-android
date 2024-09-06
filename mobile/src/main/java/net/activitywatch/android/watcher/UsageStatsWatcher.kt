@@ -243,10 +243,6 @@ class UsageStatsWatcher constructor(val context: Context) {
 
             val usm = getUSM() ?: return 0
 
-            // Store activities here that have had a RESUMED but not a PAUSED event.
-            // (to handle out-of-order events)
-            //val activeActivities = [];
-
             // TODO: Fix issues that occur when usage stats events are out of order (RESUME before PAUSED)
             var heartbeatsSent = 0
             val usageEvents = usm.queryEvents(lastUpdated?.toEpochMilli() ?: 0L, Long.MAX_VALUE)
