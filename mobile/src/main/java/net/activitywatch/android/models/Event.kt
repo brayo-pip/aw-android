@@ -10,7 +10,7 @@ import org.threeten.bp.Instant
 
 data class Event(val timestamp: Instant, val duration: Double = 0.0, val data: JSONObject) {
     companion object {
-        fun fromUsageEvent(usageEvent: UsageEvents.Event, context: Context, includeClassname: Boolean = true, useCurrentTimestamp: Boolean = false): Event {
+        fun fromUsageEvent(usageEvent: UsageEvents.Event, context: Context, includeClassname: Boolean = true, customTimestamp: Long?): Event {
 
             val pm = context.packageManager
             val appName = try {
@@ -27,8 +27,10 @@ data class Event(val timestamp: Instant, val duration: Double = 0.0, val data: J
                 data.put("classname", usageEvent.className)
             }
 
+            val timestamp = DateTimeUtils.toInstant(java.util.Date(customTimestamp ?: usageEvent.timeStamp))
+
             return Event(
-                timestamp = if( useCurrentTimestamp ) Instant.now() else DateTimeUtils.toInstant(java.util.Date(usageEvent.timeStamp)),
+                timestamp = timestamp,
                 duration = 0.0,
                 data = data
             )

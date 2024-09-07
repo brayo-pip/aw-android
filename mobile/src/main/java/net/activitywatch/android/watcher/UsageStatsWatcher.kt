@@ -181,6 +181,7 @@ class UsageStatsWatcher constructor(val context: Context) {
     private inner class SendHeartbeatsTask : AsyncTask<URL, Instant, Int>() {
 
         private val logEventFormatter = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+        private var heartBeatsSent = 0
 
         fun logEventDetails(event: UsageEvents.Event) {
             val formattedTime = logEventFormatter.format(Date(event.timeStamp))
@@ -207,11 +208,27 @@ class UsageStatsWatcher constructor(val context: Context) {
             Log.d(TAG, "processing Event: ${formattedTime} ${eventType}  ${event.packageName}  ")
         }
 
-        private fun sendHeartbeat( event : UsageEvents.Event, useCurrentTimestamp : Boolean, longPulse : Boolean ) {
-            val awEvent = Event.fromUsageEvent(usageEvent = event, context, includeClassname = true, useCurrentTimestamp)
+        /**
+         * Sends a heartbeat to aw-server, based on the Android UsageEvent for a specific app. Note that we do not store if the app
+         * was 'opened' or 'closed', so we have to work around that.
+         *
+         * @longPulse can be set to TRUE if the app in the event is currently still open or just closed, so we want to merge the previous and last events
+         * for this app to determine the duration. Set it to false if the app just (re)opened, so we don't count the duration between e.g.
+         * a phone lock and unlock.
+         *
+         * @timestamp: normally the timestamp of the event will be used, but an alternative timestamp can be provided
+         */
+        private fun sendHeartbeat( event : UsageEvents.Event, longPulse : Boolean, customTimestamp : Long? = null ) {
+            val awEvent = Event.fromUsageEvent(usageEvent = event, context, includeClassname = true, customTimestamp)
             val pulseTime = if( longPulse ) 60*60*24.0 else 3.0
             ri.heartbeatHelper(bucket_id, awEvent.timestamp, awEvent.duration, awEvent.data,  pulseTime )
             Log.d(TAG,"Heartbeat sent: ${awEvent.timestamp} longPulse: $longPulse ${awEvent.data.get("package")} ${awEvent.data.get("app")}")
+
+            heartBeatsSent++;
+
+            if(heartBeatsSent % 100 == 0) {
+                publishProgress(awEvent.timestamp)
+            }
         }
 
         @Deprecated("Deprecated in Java")
@@ -233,8 +250,7 @@ class UsageStatsWatcher constructor(val context: Context) {
             // TODO: Fix issues that occur when usage stats events are out of order (RESUME before PAUSED)
             var heartbeatsSent = 0
             val usageEvents = usm.queryEvents(lastUpdated?.toEpochMilli() ?: 0L, Long.MAX_VALUE)
-            var activeAppEvent : UsageEvents.Event?
-            activeAppEvent = null
+            var activeAppEvent : UsageEvents.Event? = null
 
             nextEvent@ while(usageEvents.hasNextEvent()) {
                 val event = UsageEvents.Event()
@@ -245,7 +261,7 @@ class UsageStatsWatcher constructor(val context: Context) {
                 }
 
                 // do not include launchers, since they are used all the time to switch between apps. It distorts the timeline while
-                // it is more part of the OS than an app
+                // it is more part of the OS than an app which we want to monitor
                 if( event.packageName.contains("launcher", false) ) {
                     Log.d(TAG,"Skipping launcher event for package " + event.packageName)
                     continue@nextEvent
@@ -265,22 +281,15 @@ class UsageStatsWatcher constructor(val context: Context) {
 
                             // another app is resumed than the current app. Close the current app by sending a heartbeat with a long pulsetime
                             // immediately followed up by the heartbeat for the new app that is currently open
-                            val awEvent = Event.fromUsageEvent(usageEvent = activeAppEvent, context, includeClassname = true, useCurrentTimestamp = true)
-                            ri.heartbeatHelper(bucket_id, awEvent.timestamp, awEvent.duration, awEvent.data, 60*60*24.0 )
-                            heartbeatsSent++
-                            Log.d(TAG,"Heartbeat immediate closure sent: ${awEvent.data.get("package")} ${awEvent.data.get("app")}")
+                            sendHeartbeat(activeAppEvent, longPulse = true, customTimestamp = event.timeStamp)
                         }
 
                         // send a heartbeat for the newly opened app
                         // it could be that the app was closed before (e.g. screen was turned off) and now reopened, so these events will be
                         // consecutive. We do not want the time in between these events to count as duration, so send a heartbeat with short pulsetime.
-                        val awEvent = Event.fromUsageEvent(event, context, includeClassname = true)
-                        ri.heartbeatHelper(bucket_id, awEvent.timestamp, awEvent.duration, awEvent.data, 3.0 )
-                        heartbeatsSent++
-                        Log.d(TAG,"Heartbeat open app sent: ${awEvent.data.get("package")} ${awEvent.data.get("app")}")
+                        sendHeartbeat(event, longPulse = false )
 
                         activeAppEvent = event;
-
                     }
                     UsageEvents.Event.ACTIVITY_PAUSED -> {
                         // ACTIVITY_PAUSED: Activity was moved to background
@@ -289,13 +298,13 @@ class UsageStatsWatcher constructor(val context: Context) {
                         }
 
                         if( !activeAppEvent.packageName.equals(event.packageName) ) {
+                            // if the active app does not match this ACTIVITY_PAUSED event,
+                            // we can safely ignore this event. Android has many apps (especially sytem related apps such as launchers)
+                            // closing all the time, also in random order between the actual user app and the system app.
                             continue@nextEvent
                         }
 
-                        val awEvent = Event.fromUsageEvent(event, context, includeClassname = true)
-                        ri.heartbeatHelper(bucket_id, awEvent.timestamp, awEvent.duration, awEvent.data, 60*60*24.0 )
-                        heartbeatsSent++
-                        Log.d(TAG,"Heartbeat closure sent: ${awEvent.data.get("package")} ${awEvent.data.get("app")}")
+                        sendHeartbeat(event, longPulse = true)
 
                         activeAppEvent = null
                     }
@@ -305,9 +314,6 @@ class UsageStatsWatcher constructor(val context: Context) {
                     }
                 }
 
-//                if(heartbeatsSent % 100 == 0) {
-//                    publishProgress(awEvent.timestamp)
-//                }
 
             }
             return heartbeatsSent
@@ -317,7 +323,7 @@ class UsageStatsWatcher constructor(val context: Context) {
             lastUpdated = progress[0]
             Log.i(TAG, "Progress: ${lastUpdated.toString()}")
             // The below is useful in testing, but otherwise just noisy.
-            // Toast.makeText(context, "Logging data, progress: $lastUpdated", Toast.LENGTH_LONG).show()
+            //Toast.makeText(context, "Logging data, progress: $lastUpdated", Toast.LENGTH_LONG).show()
         }
 
         override fun onPostExecute(result: Int?) {
