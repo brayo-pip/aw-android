@@ -256,13 +256,6 @@ class UsageStatsWatcher constructor(val context: Context) {
                     continue@nextEvent
                 }
 
-                // do not include launchers, since they are used all the time to switch between apps. It distorts the timeline while
-                // it is more part of the OS than an app which we want to monitor
-                if( event.packageName.contains("launcher", false) ) {
-                    Log.d(TAG,"Skipping launcher event for package " + event.packageName)
-                    continue@nextEvent
-                }
-
                 if( Log.isLoggable(TAG, Log.DEBUG)) {
                     logEventDetails(event)
                 }
